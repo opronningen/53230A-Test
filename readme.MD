@@ -1,6 +1,8 @@
 #53230A-Test
 Various small specialized utilities to run particular experiments on the 53230A frequency counter. Of little interest to the general user, unless you want to replicate some of my experiments.
 
+Needs a reference to 53230A.dll from \"53230A Toolkit\"
+
 ## Read3
 1. Set the counter to frequency measurements, mode RCON or CONT, number of samples per trigger to n (\":samp:coun\"). :trig:sour IMM. 
 2. Read3 sends a \"read?\", which triggers a new acquisition, and then logs each reading to a separate file. Number of files equals :samp:count
