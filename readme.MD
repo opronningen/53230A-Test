@@ -1,6 +1,8 @@
 #53230A-Test
 Various small specialized utilities to run particular experiments on the 53230A frequency counter. Of little interest to the general user, unless you want to replicate some of my experiments.
 
+Prototype-in-progress quality, may not work as advertised. Or at all.
+
 Needs a reference to 53230A.dll from "53230A Toolkit"
 
 ## Read3
