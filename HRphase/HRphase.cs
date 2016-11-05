@@ -60,17 +60,20 @@ HRPhase -r <rate> [-t <tau>] [-f <f_ref> <f_dut> | -f auto] [-d n] [-op | -of] [
     -f auto     Measure reference frequency
     -h n        Holdoff n edges, default 0
     -e n        Frequency estimator
+                    0 Raw - Output all samples, unprocessed
                     1 PI - Average of samples (default)
                     2 Omega - Linear fit (least squares).
+    -u          Unwrap phaseslips
 ");
         }
 
         public class Options {
             public double f_ref = 5e6;
-            public double sampleRate = 100;     // Frequency of the external trigger
+            public double sampleRate = 5000;     // Frequency of the external trigger
             public int estimator = 0;           // 0 = pi (straight average), 1 = lambda (linear curve fit). Only relevant for frequency estimates
-            public bool output_phase = false;   // Either phase or frequency is returned
+            public bool output_phase = true;   // Either phase or frequency is returned
             public double tau = 1;              // Time between output samples. tau * samplerate gives number of averaged readings
+            public bool unwrap = false;
         };
 
         public Options opts = new Options();
@@ -110,25 +113,25 @@ HRPhase -r <rate> [-t <tau>] [-f <f_ref> <f_dut> | -f auto] [-d n] [-op | -of] [
             return (true);
         }
 
-        public double unwrap(double current, double last, ref int accumulated_cycles) {
-            double period = 1 / opts.f_ref;
-            double phase = current + (period * accumulated_cycles);
-            int cycles = 0;
+        //public double unwrap(double current, double last, ref int accumulated_cycles) {
+        //    double period = 1 / opts.f_ref;
+        //    double phase = current + (period * accumulated_cycles);
+        //    int cycles = 0;
 
-            double diff = phase - last;
+        //    double diff = phase - last;
 
-            if (diff < period / 3.0)
-                cycles++;
-            else if (diff > period / 3.0)
-                cycles--;
+        //    if (diff < period / 3.0)
+        //        cycles++;
+        //    else if (diff > period / 3.0)
+        //        cycles--;
 
-            accumulated_cycles += cycles;
+        //    accumulated_cycles += cycles;
 
-            double res = phase;
-            res += cycles * period;
+        //    double res = phase;
+        //    res += cycles * period;
 
-            return res;
-        }
+        //    return res;
+        //}
 
         // Handle phase wraps. Optionally provide previous phase
         public double[] unwrap(double[] readings, double prev = -1) {
@@ -147,6 +150,7 @@ HRPhase -r <rate> [-t <tau>] [-f <f_ref> <f_dut> | -f auto] [-d n] [-op | -of] [
             double[] res = new double[readings.Length];
             
             for (int i = 0; i < res.Length; i++) {
+                res[i] = readings[i];
 
                 // The 53230A may return negative numbers in TI mode. Add a cycle
                 if (res[i] < 0)
@@ -167,10 +171,10 @@ HRPhase -r <rate> [-t <tau>] [-f <f_ref> <f_dut> | -f auto] [-d n] [-op | -of] [
             Err.AutoFlush = true;
 
             // Place instument in "waiting-for-trigger" mode
-            instr.WriteString("ABORT;*WAI;INIT;");
+            instr.WriteString("ABORT;*WAI;INIT;*TRG");
 
             // Query to used to retrieve readings. Fetch 1 second worth of readings
-            string query = String.Format(":DATA:REMOVE? {0},WAIT", opts.tau * opts.sampleRate);
+            string query = String.Format("*TRG;:DATA:REMOVE? {0},WAIT", opts.tau * opts.sampleRate);
 
             double last_phase = -1;
 
@@ -181,13 +185,18 @@ HRPhase -r <rate> [-t <tau>] [-f <f_ref> <f_dut> | -f auto] [-d n] [-op | -of] [
                 double[] values = instr.GetReadings();
 
                 // Add/remove cycles to account for frequency offset/phase slips
-                values = unwrap(values);
+                if (opts.unwrap)
+                    values = unwrap(values);
 
                 double phase;
 
                 // If phase is requested, simply average each batch of readings (phase unwrapped)
                 if (opts.output_phase) {
-                    Console.WriteLine(values.Average().ToString("E15", CultureInfo.InvariantCulture));
+                    if(opts.estimator == 0)
+                        foreach(double sample in values)
+                            Console.WriteLine(sample.ToString("E15", CultureInfo.InvariantCulture));
+                    else
+                        Console.WriteLine(values.Average().ToString("E15", CultureInfo.InvariantCulture));
                 } else {
                     // Output frequency estimate
 
