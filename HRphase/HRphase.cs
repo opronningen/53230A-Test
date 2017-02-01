@@ -12,7 +12,7 @@ namespace HRphase {
         /*
          
             HighResPhase measurements:
-                1. Use ancilliary clock generator on external trigger, 100-10Khz square wave
+                1. Use ancilliary clock generator on external trigger, 100-50Khz square wave
                     Stability is not extremely important, only impacts tau
                 2. Measure phase between input 1 (ref) and input 2 (dut)
                 3. Do magic
@@ -54,26 +54,19 @@ HRPhase -r <rate> [-t <tau>] [-f <f_ref> <f_dut> | -f auto] [-d n] [-op | -of] [
                     1 = 1 sample per second, 0.1 = 10 SPS. The proportion between tau and rate 
                     defines number of input measurements averaged to give output measurement:
                     rate = 100Hz, tau = 0.1 -> 10 input samples are used to calculate each output sample
-    -d n        Decimate by n (default 1)
-    -o (f|p)    Output frequency estimate or phase measurement
+    -a n        Average n points (default 1)
     -f <f>      f = Reference frequency. Default Auto.
     -f auto     Measure reference frequency
-    -h n        Holdoff n edges, default 0
-    -e n        Frequency estimator
-                    0 Raw - Output all samples, unprocessed
-                    1 PI - Average of samples (default)
-                    2 Omega - Linear fit (least squares).
-    -u          Unwrap phaseslips
+    -u          Unwrap phaseslips (implicit if averaging)
 ");
         }
 
         public class Options {
-            public double f_ref = 5e6;
-            public double sampleRate = 5000;     // Frequency of the external trigger
-            public int estimator = 0;           // 0 = pi (straight average), 1 = lambda (linear curve fit). Only relevant for frequency estimates
-            public bool output_phase = true;   // Either phase or frequency is returned
-            public double tau = 1;              // Time between output samples. tau * samplerate gives number of averaged readings
-            public bool unwrap = false;
+            public double f_ref = 5e6;          // Frequency of reference signal
+            public double sampleRate = 5e4;     // Frequency of the external trigger
+            public int average = 0;             // How many samples to average
+            public bool unwrap = true;
+            public int tau = 1;                // tau in seconds (only relevant for frequency estimates
         };
 
         public Options opts = new Options();
@@ -93,13 +86,6 @@ HRPhase -r <rate> [-t <tau>] [-f <f_ref> <f_dut> | -f auto] [-d n] [-op | -of] [
             bool err = false;
             while (i < args.Length) {
                 switch (args[i++]) {
-
-                    case "-t":
-                        if (!double.TryParse(args[i++], out opts.tau))
-                            err = true;
-
-                        break;
-
                     case "-r":
                         break;
                 }
@@ -113,52 +99,37 @@ HRPhase -r <rate> [-t <tau>] [-f <f_ref> <f_dut> | -f auto] [-d n] [-op | -of] [
             return (true);
         }
 
-        //public double unwrap(double current, double last, ref int accumulated_cycles) {
-        //    double period = 1 / opts.f_ref;
-        //    double phase = current + (period * accumulated_cycles);
-        //    int cycles = 0;
-
-        //    double diff = phase - last;
-
-        //    if (diff < period / 3.0)
-        //        cycles++;
-        //    else if (diff > period / 3.0)
-        //        cycles--;
-
-        //    accumulated_cycles += cycles;
-
-        //    double res = phase;
-        //    res += cycles * period;
-
-        //    return res;
-        //}
-
-        // Handle phase wraps. Optionally provide previous phase
-        public double[] unwrap(double[] readings, double prev = -1) {
+        // Handle phase wraps. 
+        static double prev = -1;
+        static long cycles = 0;
+        public double[] unwrap(double[] readings) {
 
             if (readings == null || readings.Length == 0)
                 return readings;
 
             double diff = 0;
-
-            if(prev == -1)
-                prev = readings[0];
                 
-            long cycles = 0;
             double period = 1 / opts.f_ref;
 
             double[] res = new double[readings.Length];
-            
+
+            if (prev == -1)
+                prev = readings[0];
+
             for (int i = 0; i < res.Length; i++) {
                 res[i] = readings[i];
 
                 // The 53230A may return negative numbers in TI mode. Add a cycle
-                if (res[i] < 0)
-                    res[i] += period;
+                //if (res[i] < 0)
+                //    res[i] += period;
 
                 diff = res[i] - prev;
-                if (diff <= -period / 3.0) { cycles += 1; }
-                if (diff >= period / 3.0) { cycles -= 1; }
+                if (diff <= -period / 3.0) {
+                    cycles += 1;
+                }else if (diff >= period / 3.0) {
+                    cycles -= 1;
+                }
+
                 prev = res[i];
                 res[i] += cycles * period;
             }
@@ -167,70 +138,59 @@ HRPhase -r <rate> [-t <tau>] [-f <f_ref> <f_dut> | -f auto] [-d n] [-op | -of] [
         }
 
         public void Run() {
-            StreamWriter Err = new StreamWriter(Console.OpenStandardError());
-            Err.AutoFlush = true;
+
+            double[] values = null;
 
             // Place instument in "waiting-for-trigger" mode
             instr.WriteString("ABORT;*WAI;INIT;*TRG");
 
-            // Query to used to retrieve readings. Fetch 1 second worth of readings
-            string query = String.Format("*TRG;:DATA:REMOVE? {0},WAIT", opts.tau * opts.sampleRate);
+            // Query to used to retrieve readings. Fetch 1 trigger worth of readings
+            string query = String.Format("*TRG;:DATA:REMOVE? {0},WAIT", opts.sampleRate);
 
-            double last_phase = -1;
+            int triggersToFetch = (int)instr.Conf.GetNumericByID(SettingID.trig_coun).value;
+            Console.Error.Write("\nFetching {0} triggers", triggersToFetch);
 
-            while (true) {
-            
-                instr.WriteString(query);
+            int triggerCount = 0;
+            while (triggerCount < triggersToFetch) {
 
-                double[] values = instr.GetReadings();
+                // There is already one buffered trigger, to not issue the last trigger (or the instrument will balk)
+                if(triggerCount < triggersToFetch -1)
+                    instr.WriteString(query);
+                else
+                    instr.WriteString(String.Format(":DATA:REMOVE? {0},WAIT", opts.sampleRate));
 
-                // Add/remove cycles to account for frequency offset/phase slips
-                if (opts.unwrap)
+                values = instr.GetReadings();
+
+                // Add/remove cycles to account for frequency offset/phase slips - implicit if averaging
+                if (opts.unwrap || opts.average > 2)
                     values = unwrap(values);
 
-                double phase;
+                // Return phase samples, optionally averaged
 
-                // If phase is requested, simply average each batch of readings (phase unwrapped)
-                if (opts.output_phase) {
-                    if(opts.estimator == 0)
-                        foreach(double sample in values)
-                            Console.WriteLine(sample.ToString("E15", CultureInfo.InvariantCulture));
-                    else
-                        Console.WriteLine(values.Average().ToString("E15", CultureInfo.InvariantCulture));
+                if (opts.average < 2) {
+                    foreach (double sample in values)
+                        Console.WriteLine(sample.ToString("E15", CultureInfo.InvariantCulture));
                 } else {
-                    // Output frequency estimate
+                    Console.WriteLine(values.Average().ToString("E15", CultureInfo.InvariantCulture));
 
-                    // PI estimator - average 100pt phase (or whatever tau * samplerate works out to) 
-                    // with average of next 100pt -> calc f
-                    if (opts.estimator == 0) {
-                        phase = values.Average();
-
-                        if (last_phase == -1) {
-                            last_phase = phase;
-                        } else {
-                            // Phase to frequency based on current and last phase.
-                            phase = unwrap(new double[] { phase }, last_phase)[0];                                  // Unwrap wrt last phase
-                            double f = (phase - last_phase) * (opts.f_ref / (1 / opts.sampleRate)) + opts.f_ref;    // Error, must take into account averaging
-                            Console.WriteLine(f.ToString("E15", CultureInfo.InvariantCulture));
-                        }
-
-                    } else if (opts.estimator == 1) {
-                        // Linear fit of data in this "batch", output frequency estimate based on slope
-
-
-                    } else if (opts.estimator == 2) {
-                        // Unknown estimator - estimate frequency from each phase-measurement in this batch and average the frequency-etimates
-
-                    }
+                    // To-do: average may not match readings per trigger. Also, may not divide readings per
+                    // trigger exactly, so need to save "leftover" readings.
                 }
+                
+                // output status message every 100 triggers
+                if (++triggerCount % 100 == 0)
+                    Console.Error.Write("\nFetched {0} triggers", triggerCount);
+                else
+                    Console.Error.Write(".");
             }
+            Console.Error.Write("\nFetched {0} triggers", triggerCount);
         }
 
         static void Main(string[] args) {
             HRphase h = new HRphase();
 
             h.instr.LearnConfig();
-
+            h.opts.sampleRate = (h.instr.Conf.GetByID(SettingID.samp_coun) as NumericSetting).value;
             if(h.ParseOpts(args))
                 h.Run();
         }

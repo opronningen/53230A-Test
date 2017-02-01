@@ -20,6 +20,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BinRead", "BinRead\BinRead.csproj", "{B3E49393-152B-417E-B514-401354B510EC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LPF", "LPF\LPF.csproj", "{6F2ADD50-1CE8-4E60-8B16-BDD4F2B71A8E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FrqEstimator", "PiEstimator\FrqEstimator.csproj", "{BDE4A82A-C9E3-476B-ADA2-FE43A8088BB1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -50,6 +54,14 @@ Global
 		{B3E49393-152B-417E-B514-401354B510EC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B3E49393-152B-417E-B514-401354B510EC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B3E49393-152B-417E-B514-401354B510EC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6F2ADD50-1CE8-4E60-8B16-BDD4F2B71A8E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6F2ADD50-1CE8-4E60-8B16-BDD4F2B71A8E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6F2ADD50-1CE8-4E60-8B16-BDD4F2B71A8E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6F2ADD50-1CE8-4E60-8B16-BDD4F2B71A8E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BDE4A82A-C9E3-476B-ADA2-FE43A8088BB1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BDE4A82A-C9E3-476B-ADA2-FE43A8088BB1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BDE4A82A-C9E3-476B-ADA2-FE43A8088BB1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BDE4A82A-C9E3-476B-ADA2-FE43A8088BB1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
